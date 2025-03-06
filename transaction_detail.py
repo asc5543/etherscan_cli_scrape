@@ -1,5 +1,3 @@
-
-
 class TransactionDetail:
     """Records the transaction detail of each transaction."""
     def __init__(
@@ -9,7 +7,7 @@ class TransactionDetail:
             block: int = 0,
             timestamp: str = "",
             method: str = "",
-            sponsored: str = "",
+            action: str = "",
             source: str = "",
             target: str = "",
             value: str = "",
@@ -20,8 +18,8 @@ class TransactionDetail:
         self.status = status
         self.block = block
         self.timestamp = timestamp
-        self.method = method # Action
-        self.sponsored = sponsored
+        self.method = method
+        self.action = action
         self.source = source # From
         self.target = target # To
         self.value = value
@@ -33,8 +31,8 @@ class TransactionDetail:
                         f"Status: {self.status}\n"
                         f"Block: {self.block}\n"
                         f"Timestamp: {self.timestamp}\n"
-                        f"Transaction Action: {self.method}\n"
-                        f"Sponsored: {self.sponsored}\n"
+                        f"Method: {self.method}\n"
+                        f"Transaction Action: {self.action}\n"
                         f"From: {self.source}\n"
                         f"To: {self.target}\n"
                         f"Value: {self.value}\n"

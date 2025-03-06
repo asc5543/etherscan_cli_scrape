@@ -1,9 +1,16 @@
+import os
+import re
+
+from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 from transaction_detail import TransactionDetail
 
 import argparse
 import json
 from collections import defaultdict
 import urllib.request
+
+load_dotenv()
 
 def read_page(url: str) -> str:
     """Read page and return the raw content"""
@@ -15,14 +22,54 @@ def read_page(url: str) -> str:
     content = target_page.read().decode("utf-8")
     return content
 
-def get_transaction_detail_by_hash(txhash: str) -> (str, float):
+def get_transaction_detail_by_hash(txhash: str) -> (str, str):
     """Return the sponsored and gas_price info"""
     url = r"https://etherscan.io/tx/" + txhash
     content = read_page(url)
+    soup = BeautifulSoup(content, "html.parser")
+    action = ""
+    gas_price = ""
 
-    sponsored = ""
-    gas_price = 0.0
-    return sponsored, gas_price
+    # Handle action
+    if "Transaction Action:" in soup.getText():
+        action_div = soup.find("i", class_ = "far fa-bolt text-primary ms-0.5 me-1.5 me-1").find_parent()
+        content_div = action_div.find_next_sibling()
+        spans = content_div.find_all("span")
+        action_text_parts = []
+
+        for span in spans:
+            if "To" in span.text:
+                break
+            if not action_text_parts or span.text.strip() != action_text_parts[-1]:
+                action_text_parts.append(span.text.strip())
+
+        address_link = action_div.find("a", {"data-bs-title": True})
+        if address_link:
+            address = address_link["data-bs-title"].strip()
+            action_text_parts.append(f"To {address}")
+
+        action_text = " ".join(action_text_parts)
+        action = action_text.strip()
+
+    else:
+        print("There is no Transaction Action information!!!")
+
+    # Handle gas price
+    gas_price_span = soup.find("span", id="ContentPlaceHolder1_spanGasPrice")
+    if gas_price_span:
+        gas_text = gas_price_span.text.strip()
+
+        match = re.search(r"([\d.]+)\s*Gwei\s*\(([\d.]+)\s*ETH\)", gas_text)
+        if match:
+            gwei_value = match.group(1)
+            eth_value = match.group(2)
+            gas_price = f"{gwei_value} Gwei ({eth_value} ETH)"
+        else:
+            print("Cannot find Gas Price")
+    else:
+        print("Cannot find Gas Price")
+
+    return action, gas_price
 
 def get_transaction_list_by_block(block: int, method: str, amount_filter: bool, zero_amount: bool) -> list[TransactionDetail]:
     """Return the transaction hash list based on the filter."""
@@ -30,15 +77,14 @@ def get_transaction_list_by_block(block: int, method: str, amount_filter: bool, 
     url = r"https://etherscan.io/txs?block=" + str(block)
     # Use header to mimic as a browser
     content = read_page(url)
-    # Can use regex to parse
-    total_trans = int(content.split("A total of ")[1].split(" transactions found")[0])
+    total_trans = int(re.search(r"A total of (\d+) transaction", content).group(1))
     total_page = total_trans // 50 + 1
 
     for i in range(1, total_page+1):
         block_url = url + f"&p={i}"
         if i > 1:
             content = read_page(block_url)
-        hash_info = content.split("const quickExportTransactionListData = '")[1].split("';")[0]
+        hash_info = re.search(r"const quickExportTransactionListData = '(.*?)';", content).group(1)
         hash_json = json.loads(hash_info)
         for hash_detail in hash_json:
             if method and hash_detail['Method'] != method:
@@ -50,7 +96,7 @@ def get_transaction_list_by_block(block: int, method: str, amount_filter: bool, 
                     continue
             # Sponsored and gas price does not exist on block page
             # Need to parse them from transaction details page
-            sponsored, gas_price = get_transaction_detail_by_hash(hash_detail['Txhash'])
+            action, gas_price = get_transaction_detail_by_hash(hash_detail['Txhash'])
             sender = ""
             receiver = ""
             if hash_detail['SenderLable']:
@@ -67,7 +113,7 @@ def get_transaction_list_by_block(block: int, method: str, amount_filter: bool, 
                 block = block,
                 timestamp = hash_detail['DateTime'],
                 method = hash_detail['Method'],
-                sponsored = sponsored,
+                action = action,
                 source = sender,
                 target = receiver,
                 value = f"{hash_detail['Amount']}({hash_detail['Value']})",
@@ -75,8 +121,6 @@ def get_transaction_list_by_block(block: int, method: str, amount_filter: bool, 
                 gas_price = gas_price,
             )
             trans_list.append(trans_detail)
-            print(trans_detail)
-            return trans_list
 
     return trans_list
 
@@ -115,11 +159,13 @@ def main():
     for block in range(block_start, block_end+1):
         transaction_list = get_transaction_list_by_block(block, target_method, bool_amount_filter, zero_amount)
         block_details[block] = transaction_list
-    #print(block_details)
 
+    for trans_detail in block_details[block_start]:
+        print(trans_detail)
     # TODO: Dump the information
 
 
 # Get the block range, method, and amount by CLI filter
 if __name__ == "__main__":
+    print(os.environ.get("KEY"))
     main()
