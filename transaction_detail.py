@@ -12,7 +12,7 @@ class TransactionDetail:
             target: str = "",
             value: str = "",
             fee: float = 0,
-            gas_price: float = 0,
+            gas_price: str = "",
     ):
         self.trans_hash = trans_hash
         self.status = status
@@ -39,3 +39,34 @@ class TransactionDetail:
                         f"Transaction Fee: {self.fee}\n"
                         f"Gas Price: {self.gas_price}")
         return print_string
+
+    def get_json_format(self) -> dict:
+        dict_format = {
+            "Transaction Hash": self.trans_hash,
+            "Status": self.status,
+            "Block": self.block,
+            "Timestamp": self.timestamp,
+            "Method": self.method,
+            "Transaction Action": self.action,
+            "From": self.source,
+            "To": self.target,
+            "Value": self.value,
+            "Transaction Fee": self.fee,
+            "Gas Price": self.gas_price,
+        }
+        return dict_format
+
+class BlockDetail:
+    def __init__(
+            self,
+            block: int = 0,
+    ):
+        self.block = block
+        self.trans_detail = []
+
+    def get_json_format(self) -> dict:
+        dict_ret = {
+            "Block": self.block,
+            "Transaction_details": self.trans_detail
+        }
+        return dict_ret

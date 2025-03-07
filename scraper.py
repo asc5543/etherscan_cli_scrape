@@ -3,11 +3,11 @@ import re
 
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
+from transaction_detail import BlockDetail
 from transaction_detail import TransactionDetail
 
 import argparse
 import json
-from collections import defaultdict
 import urllib.request
 
 load_dotenv()
@@ -15,7 +15,10 @@ load_dotenv()
 def read_page(url: str) -> str:
     """Read page and return the raw content"""
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (HTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
+        'Referer': 'https://etherscan.io/',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8'
     }
     req = urllib.request.Request(url, headers=headers)
     target_page = urllib.request.urlopen(req)
@@ -52,7 +55,7 @@ def get_transaction_detail_by_hash(txhash: str) -> (str, str):
         action = action_text.strip()
 
     else:
-        print("There is no Transaction Action information!!!")
+        print(f"{txhash} is no Transaction Action information!!!")
 
     # Handle gas price
     gas_price_span = soup.find("span", id="ContentPlaceHolder1_spanGasPrice")
@@ -65,13 +68,13 @@ def get_transaction_detail_by_hash(txhash: str) -> (str, str):
             eth_value = match.group(2)
             gas_price = f"{gwei_value} Gwei ({eth_value} ETH)"
         else:
-            print("Cannot find Gas Price")
+            print(f"Cannot find Gas Price from {txhash}")
     else:
-        print("Cannot find Gas Price")
+        print(f"Cannot find Gas Price from {txhash}")
 
     return action, gas_price
 
-def get_transaction_list_by_block(block: int, method: str, amount_filter: bool, zero_amount: bool) -> list[TransactionDetail]:
+def get_transaction_list_by_block(block: int, method: str, amount_filter: bool, zero_amount: bool) -> list[dict]:
     """Return the transaction hash list based on the filter."""
     trans_list = []
     url = r"https://etherscan.io/txs?block=" + str(block)
@@ -97,8 +100,6 @@ def get_transaction_list_by_block(block: int, method: str, amount_filter: bool, 
             # Sponsored and gas price does not exist on block page
             # Need to parse them from transaction details page
             action, gas_price = get_transaction_detail_by_hash(hash_detail['Txhash'])
-            sender = ""
-            receiver = ""
             if hash_detail['SenderLable']:
                 sender = f"{hash_detail['SenderLable']}({hash_detail['Sender']})"
             else:
@@ -120,7 +121,7 @@ def get_transaction_list_by_block(block: int, method: str, amount_filter: bool, 
                 fee = hash_detail['TxnFee'],
                 gas_price = gas_price,
             )
-            trans_list.append(trans_detail)
+            trans_list.append(trans_detail.get_json_format())
 
     return trans_list
 
@@ -132,7 +133,6 @@ def main():
     parser.add_argument("--zero_amount", help="Set the zero amount filter. Ex. True/False")
     args = parser.parse_args()
 
-    block_start = block_end = 0
     target_method = ""
     bool_amount_filter = False
     zero_amount = False
@@ -155,17 +155,19 @@ def main():
 
     # Parse the transaction hash list by block
     # Filter out in this stage
-    block_details = defaultdict(list)
+    block_details = []
     for block in range(block_start, block_end+1):
+        block_detail = BlockDetail(block)
         transaction_list = get_transaction_list_by_block(block, target_method, bool_amount_filter, zero_amount)
-        block_details[block] = transaction_list
+        block_detail.trans_detail = transaction_list
+        block_details.append(block_detail.get_json_format())
 
-    for trans_detail in block_details[block_start]:
-        print(trans_detail)
-    # TODO: Dump the information
-
+    # Saves to json
+    output_file = os.path.join(os.environ.get("JSON_FILE_PATH"), "output.json")
+    with open(output_file, "w", encoding="utf-8") as f:
+        json.dump(block_details, f, indent=4, ensure_ascii=False)
+    print(f"Data saved to {output_file}")
 
 # Get the block range, method, and amount by CLI filter
 if __name__ == "__main__":
-    print(os.environ.get("KEY"))
     main()
